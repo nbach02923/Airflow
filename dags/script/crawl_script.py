@@ -2,6 +2,8 @@ import csv
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
+
+
 def crawling():
     base_url = "https://raovat321.com/bat-dong-san"
     header = {
@@ -34,15 +36,13 @@ def crawling():
                 ).text
                 p = priceText.split(" ")
                 price = 0
-                if len(p) > 1 and p[1] == "tỷ":
-                    price = int(float(p[0].replace(",", ".")) * 1000000000)
-                elif len(p) > 1 and p[1] == "triệu":
-                    price = int(float(p[0].replace(",", ".")) * 1000000)
-                elif len(p) > 1 and p[1] == "ngàn":
-                    price = int(float(p[0].replace(",", ".")) * 1000)
-                else:
-                    price = 0
-                div = detailSoup.find_all("div", class_="mt-2")
+                if len(p) > 1:
+                    if p[1] == "tỷ":
+                        price = int(float(p[0].replace(",", ".")) * 1000000000)
+                    elif p[1] == "triệu":
+                        price = int(float(p[0].replace(",", ".")) * 1000000)
+                    elif p[1] == "ngàn":
+                        price = int(float(p[0].replace(",", ".")) * 1000)
                 div = detailSoup.find_all("div", class_="mt-2")
                 addressString = div[3]
                 address = addressString.find(class_="text-category").text
@@ -62,7 +62,9 @@ def crawling():
                 )
                 records.append(record)
     filename_csv = "bat_dong_san_" + datetime.today().strftime("%d_%m_%Y") + ".csv"
-    with open("./dags/data/real_estate" + filename_csv, "w+", encoding="utf-8", newline="") as c:
+    with open(
+        "./dags/data/real_estate/" + filename_csv, "w+", encoding="utf-8", newline=""
+    ) as c:
         writer = csv.DictWriter(
             c,
             fieldnames=["id", "title", "date", "price", "address", "owner"],
@@ -70,4 +72,3 @@ def crawling():
         )
         writer.writeheader()
         writer.writerows(records)
-        c.close()
