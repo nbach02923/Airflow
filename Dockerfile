@@ -14,11 +14,11 @@ ARG SPARK_VERSION="3.2.3"
 ARG HADOOP_VERSION="3.2"
 
 # Define en_US.
-ENV LANGUAGE=en_US.UTF-8 \
-    LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8 \
-    LC_CTYPE=en_US.UTF-8 \
-    LC_MESSAGES=en_US.UTF-8
+ENV LANGUAGE en_US.UTF-8
+ENV LANG en_US.UTF-8
+ENV LC_ALL en_US.UTF-8
+ENV LC_CTYPE en_US.UTF-8
+ENV LC_MESSAGES en_US.UTF-8
 
 # Disable noisy "Handling signal" log messages:
 # ENV GUNICORN_CMD_ARGS --log-level WARNING
@@ -32,10 +32,12 @@ RUN set -ex \
     libffi-dev \
     libpq-dev \
     git \
-    ' \
-    && apt-get update -yqq \
+    '
+RUN apt-get clean \
+    && apt-get update -y \
     && apt-get upgrade -yqq \
-    && apt-get install -yqq --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
+    && apt-get install -y gosu \
     $buildDeps \
     freetds-bin \
     build-essential \
@@ -49,7 +51,7 @@ RUN set -ex \
     && locale-gen \
     && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
     && useradd -ms /bin/bash -d ${AIRFLOW_USER_HOME} airflow \
-    && apt-get install libsasl2-dev \
+    && apt-get install libsasl2-dev krb5-user krb5-config  -y \
     && pip install -U pip setuptools wheel \
     && pip install pytz \
     pyOpenSSL \
@@ -58,13 +60,11 @@ RUN set -ex \
     bs4 \
     pandas \
     confluent-kafka \
-    pyspark==${AIRFLOW_VERSION} \
+    pyspark==3.2.3\
     apache-airflow-providers-apache-spark \
-    apache-airflow[google] \
     apache-airflow[crypto,celery,postgres,hive,jdbc,mysql,ssh${AIRFLOW_DEPS:+,}${AIRFLOW_DEPS}]==${AIRFLOW_VERSION} \
-    celery[redis] \
-    redis==3.2 \
     importlib-metadata==4.13.0 \
+    && pip install -U celery[redis] \
     && if [ -n "${PYTHON_DEPS}" ]; then pip install ${PYTHON_DEPS}; fi \
     && apt-get purge --auto-remove -yqq $buildDeps \
     && apt-get autoremove -yqq --purge \
@@ -76,7 +76,6 @@ RUN set -ex \
     /usr/share/man \
     /usr/share/doc \
     /usr/share/doc-base
-
 COPY script/entrypoint.sh /entrypoint.sh
 COPY config/airflow.cfg ${AIRFLOW_USER_HOME}/airflow.cfg
 # COPY requirements.txt ${AIRFLOW_USER_HOME}/requirements.txt
@@ -87,15 +86,12 @@ EXPOSE 8080 5555 8793
 # Java is required in order to spark-submit work
 # Install Java 8
 RUN mkdir -p /usr/share/man/man1 \
-    && apt-get install -y software-properties-common \
-    && apt-get install -y gnupg2 \
-    && apt-add-repository -y ppa:openjdk-r/ppa \
     && apt-get update \
-    && apt-get install -y openjdk-8-jdk \
-    && java -version  \
-    && javac -version
-
-ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64
+    && apt-get install -y wget apt-transport-https gnupg software-properties-common\
+    && wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt-key add - \
+    && echo "deb https://packages.adoptium.net/artifactory/deb bookworm main" | tee /etc/apt/sources.list.d/adoptium.list \
+    && apt-get update && apt-get install -y temurin-8-jdk
+ENV JAVA_HOME /usr/lib/jvm/temurin-8-jdk-amd64
 RUN export JAVA_HOME
 ###############################
 ## Finish JAVA installation
@@ -105,8 +101,7 @@ ENV SPARK_HOME /opt/spark
 
 # Spark submit binaries and jars (Spark binaries must be the same version of spark cluster)
 # Not use SSH by default and use SparkSubmitOperator
-RUN apt-get install -y wget \
-    && cd "/tmp" \
+RUN cd "/tmp" \
     && wget --no-verbose "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" \
     && tar -xvzf "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" \
     && mkdir -p "${SPARK_HOME}/bin" \

@@ -44,7 +44,6 @@ x-airflow-common: &airflow-common
     # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
     # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
     #image: ${AIRFLOW_IMAGE_NAME:-chiquang98/airflow:2.4.0}
-    # image: tranvietcuonghust/airflow_spark_python3.7:latest
     build: .
     environment: &airflow-common-env
         AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -56,7 +55,6 @@ x-airflow-common: &airflow-common
         AIRFLOW__CORE__FERNET_KEY: ""
         AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
         AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-        AIRFLOW__CORE__EXPOSE_CONFIG: "true"
         AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
         # _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     volumes:
@@ -232,15 +230,15 @@ services:
                 fi
                 mkdir -p /sources/logs /sources/dags /sources/plugins
                 chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
-                airflow db init
-                airflow users create \
-                --username airflow \
-                --firstname airflow \
-                --lastname airflow \
-                --role Admin \
-                --email airflow@airflow.airflow \
-                --password airflow
-                # exec /entrypoint airflow version
+                # airflow db init
+                # airflow users create \
+                # --username admin \
+                # --firstname Admin \
+                # --lastname User \
+                # --role Admin \
+                # --email admin@airflow.org \
+                # --password admin
+                exec /entrypoint airflow version
         # yamllint enable rule:line-length
         environment:
             <<: *airflow-common-env
@@ -265,7 +263,10 @@ services:
             - bash
             - -c
             - airflow
-    # Set up spark master and worker from bitnami docker image
+
+    # You can enable flower by adding "--profile flower" option e.g. docker-compose --profile flower up
+    # or by explicitly targeted on the command line e.g. docker-compose up flower.
+    # See: https://docs.docker.com/compose/profiles/
     spark:
         image: bitnami/spark:3.2.3
         user: root # Run container as root container: https://docs.bitnami.com/tutorials/work-with-non-root-containers/
@@ -281,14 +282,12 @@ services:
             - ./dags:/opt/airflow/dags
             - ./logs:/opt/airflow/logs
             - ./plugins:/opt/airflow/plugins
-            - ./spark/app:/opt/spark/app #Spark Scripts (Must be the same path in airflow and Spark Cluster)
+            - ./spark/app:/opt/spark/app # Spark scripts folder (Must be the same path in airflow and Spark Cluster)
             - ./spark/resources:/opt/spark/resources #Resources folder (Must be the same path in airflow and Spark Cluster)
         ports:
             - "8181:8080"
             - "7077:7077"
-    # Only have enough resouces to use 1 worker at a time
-    # For more worker copy this worker 1 to worker 2 and so on
-    spark-worker-1:
+    spark-worker:
         image: bitnami/spark:3.2.3
         user: root
         environment:
@@ -299,14 +298,13 @@ services:
             - SPARK_RPC_AUTHENTICATION_ENABLED=no
             - SPARK_RPC_ENCRYPTION_ENABLED=no
             - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-            - SPARK_SSL_ENABLED=no
+            - SPARK_SSL_ENABLED=yes
         volumes:
             - ./dags:/opt/airflow/dags
             - ./logs:/opt/airflow/logs
             - ./plugins:/opt/airflow/plugins
-            - ./spark/app:/opt/spark/app #Spark Scripts (Must be the same path in airflow and Spark Cluster)
+            - ./spark/app:/opt/spark/app # Spark scripts folder (Must be the same path in airflow and Spark Cluster)
             - ./spark/resources:/opt/spark/resources #Resources folder (Must be the same path in airflow and Spark Cluster)
-    # Set up kafka for streaming data(when need or when hourly fetching data from external source)
     zookeeper:
         image: confluentinc/cp-zookeeper:latest
         ports:
@@ -322,24 +320,19 @@ services:
             - 9092:9092
         environment:
             KAFKA_BROKER_ID: 1 # required
-            KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181' # required
+            KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181" # required
             KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT # optional
             KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092 # required
             KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # optional
             KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 1000 # optional
             KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT # optional
-
-    # You can enable flower by adding "--profile flower" option e.g. docker-compose --profile flower up
-    # or by explicitly targeted on the command line e.g. docker-compose up flower.
-    # See: https://docs.docker.com/compose/profiles/
     flower:
         <<: *airflow-common
         command: flower
-        profiles:
-            - flower
-        # To expose flower uncomment lines below. Flower not use because no need to monitor celery cluster, use defaults not config anything.
-        # ports:
-        #   - 5555:5555
+        # profiles:
+        #   - flower
+        ports:
+            - 5555:5555
         healthcheck:
             test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
             interval: 10s
@@ -350,5 +343,6 @@ services:
             <<: *airflow-common-depends-on
             airflow-init:
                 condition: service_completed_successfully
+
 volumes:
     postgres-db-volume:
