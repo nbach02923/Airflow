@@ -63,7 +63,9 @@ RUN apt-get clean \
     pyspark==3.2.3\
     apache-airflow-providers-apache-spark \
     apache-airflow[crypto,celery,postgres,hive,jdbc,mysql,ssh${AIRFLOW_DEPS:+,}${AIRFLOW_DEPS}]==${AIRFLOW_VERSION} \
+    apache-airflow-providers-amazon \
     importlib-metadata==4.13.0 \
+    delta-spark \
     && pip install -U celery[redis] \
     && if [ -n "${PYTHON_DEPS}" ]; then pip install ${PYTHON_DEPS}; fi \
     && apt-get purge --auto-remove -yqq $buildDeps \

@@ -263,10 +263,49 @@ services:
             - bash
             - -c
             - airflow
-
     # You can enable flower by adding "--profile flower" option e.g. docker-compose --profile flower up
     # or by explicitly targeted on the command line e.g. docker-compose up flower.
     # See: https://docs.docker.com/compose/profiles/
+    flower:
+        <<: *airflow-common
+        command: flower
+        # profiles:
+        #   - flower
+        ports:
+            - 5555:5555
+        healthcheck:
+            test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+            interval: 10s
+            timeout: 10s
+            retries: 5
+        restart: always
+        depends_on:
+            <<: *airflow-common-depends-on
+            airflow-init:
+                condition: service_completed_successfully
+    # End of airflow essential configuration
+    zookeeper:
+        image: confluentinc/cp-zookeeper:latest
+        ports:
+            - 2181:2181
+        environment:
+            ZOOKEEPER_CLIENT_PORT: 2181
+            ZOOKEEPER_TICK_TIME: 2000
+    kafka:
+        image: confluentinc/cp-kafka:latest
+        depends_on:
+            - zookeeper
+        ports:
+            - 9092:9092
+        environment:
+            KAFKA_BROKER_ID: 1 # required
+            KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181" # required
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT # optional
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092 # required
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # optional
+            KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 1000 # optional
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT # optional
+    # End of kafka configuration
     spark:
         image: bitnami/spark:3.2.3
         user: root # Run container as root container: https://docs.bitnami.com/tutorials/work-with-non-root-containers/
@@ -305,44 +344,19 @@ services:
             - ./plugins:/opt/airflow/plugins
             - ./spark/app:/opt/spark/app # Spark scripts folder (Must be the same path in airflow and Spark Cluster)
             - ./spark/resources:/opt/spark/resources #Resources folder (Must be the same path in airflow and Spark Cluster)
-    zookeeper:
-        image: confluentinc/cp-zookeeper:latest
+    # End of spark configuration
+    minio:
+        image: minio/minio
+        volumes:
+            - ./data:/data
         ports:
-            - 2181:2181
+            - "9000:9000"
+            - "9001:9001"
         environment:
-            ZOOKEEPER_CLIENT_PORT: 2181
-            ZOOKEEPER_TICK_TIME: 2000
-    kafka:
-        image: confluentinc/cp-kafka:latest
-        depends_on:
-            - zookeeper
-        ports:
-            - 9092:9092
-        environment:
-            KAFKA_BROKER_ID: 1 # required
-            KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181" # required
-            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT # optional
-            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092 # required
-            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # optional
-            KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 1000 # optional
-            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT # optional
-    flower:
-        <<: *airflow-common
-        command: flower
-        # profiles:
-        #   - flower
-        ports:
-            - 5555:5555
-        healthcheck:
-            test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
-            interval: 10s
-            timeout: 10s
-            retries: 5
-        restart: always
-        depends_on:
-            <<: *airflow-common-depends-on
-            airflow-init:
-                condition: service_completed_successfully
+            MINIO_ROOT_USER: minio
+            MINIO_ROOT_PASSWORD: minio
+        command: server /data
+    # End of minio configuration
 
 volumes:
     postgres-db-volume:
